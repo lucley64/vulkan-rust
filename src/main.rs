@@ -83,6 +83,7 @@ impl App {
         let device = create_logical_device(&entry, &instance, &mut data)?;
         create_swapchain(window, &instance, &device, &mut data)?;
         create_swapchain_image_views(&device, &mut data)?;
+        create_pipeline(&device, &mut data)?;
         Ok(Self { entry, instance, data, device })
     }
 
@@ -217,10 +218,9 @@ unsafe fn pick_physical_device(instance: &Instance, data: &mut AppData) -> Resul
     for physical_device in instance.enumerate_physical_devices()? {
         let properties = instance.get_physical_device_properties(physical_device);
 
-        if let Err(error) = check_physical_device(instance, data, physical_device){
+        if let Err(error) = check_physical_device(instance, data, physical_device) {
             warn!("Skipping physical device (`{}`): {}", properties.device_name, error);
-        }
-        else {
+        } else {
             info!("Selected physical device (`{}`).", properties.device_name);
             data.physical_device = physical_device;
             return Ok(());
@@ -247,13 +247,13 @@ unsafe fn check_physical_device(
 unsafe fn check_physical_device_extension(
     instance: &Instance,
     physical_device: vk::PhysicalDevice,
-) -> Result<()>{
+) -> Result<()> {
     let extensions = instance
         .enumerate_device_extension_properties(physical_device, None)?
         .iter()
         .map(|e| e.extension_name)
         .collect::<HashSet<_>>();
-    if DEVICE_EXTENSION.iter().all(|e| extensions.contains(e)){
+    if DEVICE_EXTENSION.iter().all(|e| extensions.contains(e)) {
         Ok(())
     } else {
         Err(anyhow!(SuitabilityError("Missing required device extensions.")))
@@ -330,7 +330,7 @@ unsafe fn create_swapchain(
     data.swapchain_extent = extent;
 
     let mut image_count = support.capabilities.min_image_count + 1;
-    if support.capabilities.max_image_count != 0 && image_count > support.capabilities.max_image_count{
+    if support.capabilities.max_image_count != 0 && image_count > support.capabilities.max_image_count {
         image_count = support.capabilities.max_image_count;
     }
 
@@ -396,12 +396,12 @@ fn get_swapchain_extent(
         capabilities.current_extent
     } else {
         let size = window.inner_size();
-        let clamp = |min: u32, max: u32 , v: u32| min.max(max.min(v));
+        let clamp = |min: u32, max: u32, v: u32| min.max(max.min(v));
         vk::Extent2D::builder()
             .width(clamp(
                 capabilities.min_image_extent.width,
                 capabilities.max_image_extent.width,
-                size.width
+                size.width,
             ))
             .height(clamp(
                 capabilities.min_image_extent.height,
@@ -425,24 +425,29 @@ unsafe fn create_swapchain_image_views(
                 .g(vk::ComponentSwizzle::IDENTITY)
                 .b(vk::ComponentSwizzle::IDENTITY)
                 .a(vk::ComponentSwizzle::IDENTITY);
-            let subressource_range = vk::ImageSubresourceRange::builder()
+
+            let subresource_range = vk::ImageSubresourceRange::builder()
                 .aspect_mask(vk::ImageAspectFlags::COLOR)
                 .base_mip_level(0)
-                .layer_count(1)
+                .level_count(1)
                 .base_array_layer(0)
                 .layer_count(1);
+
             let info = vk::ImageViewCreateInfo::builder()
                 .image(*i)
                 .view_type(vk::ImageViewType::_2D)
                 .format(data.swapchain_format)
                 .components(components)
-                .subresource_range(subressource_range);
+                .subresource_range(subresource_range);
+
             device.create_image_view(&info, None)
         })
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(())
 }
+
+unsafe fn create_pipeline(device: &Device, data: &mut AppData) -> Result<()> { Ok(()) }
 
 #[derive(Copy, Clone, Debug)]
 struct QueueFamilyIndices {
@@ -476,12 +481,10 @@ impl QueueFamilyIndices {
         }
 
         if let (Some(graphics), Some(present)) = (graphics, present) {
-            Ok(Self {graphics, present})
-        }
-        else {
+            Ok(Self { graphics, present })
+        } else {
             Err(anyhow!(SuitabilityError("Missing required queue families.")))
         }
-
     }
 }
 
@@ -492,13 +495,13 @@ struct SwapchainSupport {
     present_modes: Vec<vk::PresentModeKHR>,
 }
 
-impl SwapchainSupport{
+impl SwapchainSupport {
     unsafe fn get(
         instance: &Instance,
         data: &AppData,
         physical_device: vk::PhysicalDevice,
     ) -> Result<Self> {
-        Ok(Self{
+        Ok(Self {
             capabilities: instance
                 .get_physical_device_surface_capabilities_khr(physical_device, data.surface)?,
             formats: instance
