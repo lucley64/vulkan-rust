@@ -82,6 +82,7 @@ impl App {
         pick_physical_device(&instance, &mut data)?;
         let device = create_logical_device(&entry, &instance, &mut data)?;
         create_swapchain(window, &instance, &device, &mut data)?;
+        create_swapchain_image_views(&device, &mut data)?;
         Ok(Self { entry, instance, data, device })
     }
 
@@ -90,6 +91,9 @@ impl App {
     }
 
     unsafe fn destroy(&mut self) {
+        self.data.swapchain_image_views
+            .iter()
+            .for_each(|v| self.device.destroy_image_view(*v, None));
         self.device.destroy_swapchain_khr(self.data.swapchain, None);
         self.device.destroy_device(None);
         if VALIDATION_ENABLED {
@@ -111,6 +115,7 @@ struct AppData {
     swapchain_extent: vk::Extent2D,
     swapchain: vk::SwapchainKHR,
     swapchain_images: Vec<vk::Image>,
+    swapchain_image_views: Vec<vk::ImageView>,
 }
 
 unsafe fn create_instance(window: &Window, entry: &Entry, data: &mut AppData) -> Result<Instance> {
@@ -405,6 +410,38 @@ fn get_swapchain_extent(
             ))
             .build()
     }
+}
+
+unsafe fn create_swapchain_image_views(
+    device: &Device,
+    data: &mut AppData,
+) -> Result<()> {
+    data.swapchain_image_views = data
+        .swapchain_images
+        .iter()
+        .map(|i| {
+            let components = vk::ComponentMapping::builder()
+                .r(vk::ComponentSwizzle::IDENTITY)
+                .g(vk::ComponentSwizzle::IDENTITY)
+                .b(vk::ComponentSwizzle::IDENTITY)
+                .a(vk::ComponentSwizzle::IDENTITY);
+            let subressource_range = vk::ImageSubresourceRange::builder()
+                .aspect_mask(vk::ImageAspectFlags::COLOR)
+                .base_mip_level(0)
+                .layer_count(1)
+                .base_array_layer(0)
+                .layer_count(1);
+            let info = vk::ImageViewCreateInfo::builder()
+                .image(*i)
+                .view_type(vk::ImageViewType::_2D)
+                .format(data.swapchain_format)
+                .components(components)
+                .subresource_range(subressource_range);
+            device.create_image_view(&info, None)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(())
 }
 
 #[derive(Copy, Clone, Debug)]
